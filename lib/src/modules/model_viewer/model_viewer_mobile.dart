@@ -11,9 +11,9 @@ import 'package:path/path.dart' as p;
 import 'package:url_launcher/url_launcher.dart';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:webview_flutter_android/webview_flutter_android.dart'
-    as android;
+as android;
 import 'package:webview_flutter_wkwebview/webview_flutter_wkwebview.dart'
-    as ios;
+as ios;
 
 import 'html_builder.dart';
 import 'model_viewer.dart';
@@ -134,7 +134,7 @@ class ModelViewerState extends State<ModelViewer> {
       params = const PlatformWebViewControllerCreationParams();
     }
     final webViewController =
-        WebViewController.fromPlatformCreationParams(params);
+    WebViewController.fromPlatformCreationParams(params);
     await webViewController.setBackgroundColor(Colors.transparent);
     await webViewController.setJavaScriptMode(JavaScriptMode.unrestricted);
     await webViewController.setNavigationDelegate(
@@ -195,7 +195,7 @@ class ModelViewerState extends State<ModelViewer> {
               package: 'com.google.android.googlequicksearchbox',
               arguments: <String, dynamic>{
                 'browser_fallback_url':
-                    'market://details?id=com.google.android.googlequicksearchbox',
+                'market://details?id=com.google.android.googlequicksearchbox',
               },
             );
             await intent.launch().onError((error, stackTrace) {
@@ -261,6 +261,7 @@ class ModelViewerState extends State<ModelViewer> {
           if (url.isAbsolute && !url.isScheme('file')) {
             await response.redirect(url);
           } else {
+            print("----------------/model file load ${url.path}");
             final data = await (url.isScheme('file')
                 ? _readFile(url.path)
                 : _readAsset(url.path));
@@ -285,15 +286,34 @@ class ModelViewerState extends State<ModelViewer> {
             debugPrint('Redirect: ${request.uri}');
             await response.redirect(request.uri);
           } else if (request.uri.hasAbsolutePath) {
-            // Some gltf models need other resources from the origin
-            final pathSegments = [...url.pathSegments]..removeLast();
-            final tryDestination = p.joinAll([
-              url.origin,
-              ...pathSegments,
-              request.uri.path.replaceFirst('/', ''),
-            ]);
-            debugPrint('Try: $tryDestination');
-            await response.redirect(Uri.parse(tryDestination));
+            debugPrint('Absolute path: ${request.uri}');
+
+            if (request.uri.toString().startsWith("/file")) {
+              String tryDestination = request.uri.toString();
+              tryDestination = tryDestination.substring(8);
+
+              debugPrint('Try: $tryDestination');
+
+              final data = await  _readFile(tryDestination);
+              print("Read ${data.lengthInBytes} bytes");
+              response
+                ..statusCode = HttpStatus.ok
+                ..headers.add('Content-Type', 'application/octet-stream')
+                ..headers.add('Content-Length', data.lengthInBytes.toString())
+                ..headers.add('Access-Control-Allow-Origin', '*')
+                ..add(data);
+              await response.close();
+            } else {
+              final pathSegments = [...url.pathSegments]..removeLast();
+
+              final tryDestination = p.joinAll([
+                url.origin,
+                ...pathSegments,
+                request.uri.path.replaceFirst('/', ''),
+              ]);
+              await response.redirect(Uri.parse(tryDestination));
+            }
+
           } else {
             debugPrint('404 with ${request.uri}');
             final text = utf8.encode("Resource '${request.uri}' not found");
@@ -315,6 +335,7 @@ class ModelViewerState extends State<ModelViewer> {
   }
 
   Future<Uint8List> _readFile(final String path) async {
-    return File(path).readAsBytes();
+    Uint8List bytes = await File(path).readAsBytes();
+    return bytes;
   }
 }
